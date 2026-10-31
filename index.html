@@ -365,7 +365,23 @@ Think about the situation and the likely intent, then translate naturally — th
 - If there is no intelligible speech, set from:"none" and leave other fields empty.
 ${ctx ? "Recent conversation for context (oldest first):\n"+ctx : ""}`;
 }
+// 혼잡·일시 오류 시 다른 모델로 자동 전환
+const FALLBACKS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-argon"];
 async function callGemini(parts){
+  const order=[model, ...FALLBACKS.filter(m=>m!==model)];
+  let lastErr;
+  for(const m of order){
+    try{ return await callModel(m, parts); }
+    catch(err){
+      lastErr=err;
+      const busy = err.status===503 || err.status===500 || err.status===404 ||
+        (err.status===429 && /demand|overload|resource|exhausted/i.test(err.message||""));
+      if(!busy) throw err;
+    }
+  }
+  throw lastErr;
+}
+async function callModel(model, parts){
   const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res=await fetch(url,{
     method:"POST",
