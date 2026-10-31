@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#24407a">
+<title>한일 여행 통역</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --ink:#18202e; --muted:#5f6a7d; --line:#d6dce6;
+  --ai:#24407a; --ai-soft:#e3e9f6; --ko-soft:#e6f2ea; --ko:#2b6a45; --warn:#9a5b12; --rec:#c23a3a;
+  --font-ko:"Noto Sans KR","Apple SD Gothic Neo",system-ui,sans-serif;
+  --font-ja:"Noto Sans JP","Hiragino Sans",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#11151d; --surface:#1a2030; --ink:#e8ecf3; --muted:#9aa5b8; --line:#2c3447;
+  --ai:#9db6ec; --ai-soft:#22304d; --ko-soft:#1f3328; --ko:#8fd1a8; --warn:#e3b06a; --rec:#ef7b7b; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ko);font-size:16px;overflow:hidden}
+.app{height:100%;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.pad{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ai);outline-offset:2px}
+[hidden]{display:none!important}
+
+header{display:flex;align-items:center;gap:8px;padding-block:12px;border-bottom:1px solid var(--line);background:var(--surface)}
+header h1{font-size:18px;margin:0;flex:1}
+header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);font-family:var(--font-ja)}
+.pill{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:var(--bg);cursor:pointer}
+.pill[aria-pressed="true"]{color:var(--ai);border-color:var(--ai);background:var(--ai-soft);font-weight:500}
+
+.phrases{background:var(--surface);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-block:10px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:7px 13px;font-size:14px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--ai);border-color:var(--ai);color:var(--surface);font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px;max-height:120px;overflow-y:auto}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 11px;font-size:14px;cursor:pointer;text-align:left}
+.phrases.collapsed .chips{display:none}
+
+.banner{font-size:13px;color:var(--warn);padding-block:8px;background:var(--surface);border-bottom:1px solid var(--line)}
+.log{flex:1;overflow-y:auto;padding-block:14px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.empty{color:var(--muted);font-size:14px;line-height:1.7;background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:16px}
+.empty b{color:var(--ink)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.src{font-size:14px;color:var(--muted);line-height:1.5;font-family:var(--font-ko)}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;padding:1px 6px;border-radius:5px;margin-right:6px;vertical-align:1px}
+.tag.ko{background:var(--ko-soft);color:var(--ko)}
+.tag.ja{background:var(--ai-soft);color:var(--ai)}
+.out{font-size:22px;font-weight:500;line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
+.out.ja{font-family:var(--font-ja);color:var(--ai)}
+.out.ko{color:var(--ko)}
+.pron{font-size:14px;color:var(--muted)}
+.note{font-size:13px;color:var(--muted);border-left:3px solid var(--line);padding-left:8px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.act{border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:7px 12px;font-size:14px;cursor:pointer}
+.act.primary{background:var(--ai);border-color:var(--ai);color:var(--surface)}
+.thinking{color:var(--muted);font-size:15px}
+.err{color:var(--warn);font-size:14px;line-height:1.5}
+
+.dock{background:var(--surface);border-top:1px solid var(--line);padding-block:10px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px}
+.mic{width:100%;border:none;border-radius:16px;padding:18px;font-size:19px;font-weight:700;background:var(--ai);color:var(--surface);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.mic small{font-size:13px;font-weight:400;opacity:.85;font-family:var(--font-ja)}
+.mic.rec{background:var(--rec)}
+.mic:disabled{opacity:.55}
+.level{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.level i{display:block;height:100%;width:0;background:var(--rec);transition:width .08s}
+.textrow{display:flex;gap:8px}
+.textrow input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;background:var(--bg);color:var(--ink)}
+.textrow button{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:0 14px;cursor:pointer}
+
+.sheet{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-top:env(safe-area-inset-top,0px)}
+.sheet-in{max-width:560px;margin:0 auto;padding-block:20px 40px;display:flex;flex-direction:column;gap:18px}
+.sheet h2{margin:0;font-size:20px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:500}
+.field input,.field select{border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;background:var(--surface);color:var(--ink)}
+.help{font-size:13px;color:var(--muted);line-height:1.6}
+
+.big{position:fixed;inset:0;z-index:20;background:var(--surface);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.big-body{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:24px max(20px,env(safe-area-inset-right,0px)) 24px max(20px,env(safe-area-inset-left,0px));overflow-y:auto;transition:transform .25s}
+.big-body.flip{transform:rotate(180deg)}
+.big-out{font-size:clamp(34px,10vw,64px);font-weight:700;line-height:1.3;word-break:keep-all;overflow-wrap:anywhere}
+.big-out.ja{font-family:var(--font-ja);color:var(--ai)}
+.big-out.ko{color:var(--ko)}
+.big-sub{font-size:18px;color:var(--muted)}
+.big-bar{display:flex;gap:8px;padding:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--line)}
+.big-bar .act{flex:1;padding:13px;font-size:16px}
+@media (prefers-reduced-motion:reduce){.big-body{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="pad">
+    <h1>한일 여행 통역<small>韓日 旅行通訳</small></h1>
+    <button class="pill" id="speakToggle" type="button" aria-pressed="true">🔊 읽기</button>
+    <button class="pill" id="openSettings" type="button" aria-label="설정">⚙︎</button>
+  </header>
+
+  <section class="phrases pad" id="phrases" aria-label="자주 쓰는 문장">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <div class="banner pad" id="banner" hidden></div>
+
+  <main class="log pad" id="log" aria-live="polite">
+    <div class="empty" id="empty">
+      <b>🎤 말하기</b>를 누르고 말하면, 말이 끝난 뒤 자동으로 멈추고 번역합니다.<br>
+      한국어·일본어는 AI가 듣고 알아서 구분합니다. 일본 분께도 버튼만 누르고 말해 달라고 하세요.<br>
+      <b>크게 보여주기</b>로 상대에게 화면을 보여줄 수 있습니다.
+    </div>
+  </main>
+
+  <div class="dock pad">
+    <div class="level" aria-hidden="true"><i id="level"></i></div>
+    <button class="mic" id="mic" type="button">🎤 말하기<small>押して話してください</small></button>
+    <form class="textrow" id="textForm">
+      <input id="textIn" placeholder="글로 입력 · 文字で入力" autocomplete="off">
+      <button type="submit">번역</button>
+    </form>
+  </div>
+</div>
+
+<div class="sheet pad" id="settings" hidden>
+  <div class="sheet-in">
+    <h2>설정</h2>
+    <div class="field">
+      <label for="keyIn">Gemini API 키</label>
+      <input id="keyIn" type="password" placeholder="AIza…" autocomplete="off">
+      <div class="help">이 휴대폰의 브라우저에만 저장되고 다른 곳으로 보내지지 않습니다(구글 Gemini 호출에만 사용).<br>
+      Google AI Studio → Get API key에서 발급받을 수 있습니다.</div>
+    </div>
+    <div class="field">
+      <label for="modelSel">AI 모델</label>
+      <select id="modelSel">
+        <option value="gemini-3.8-flash">Gemini 3.8 Flash — 품질·속도 균형 (추천)</option>
+        <option value="gemini-4-argon">Gemini 4 Argon — 최고 품질, 느림</option>
+        <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite — 가장 빠름</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="rateSel">읽기 속도</label>
+      <select id="rateSel">
+        <option value="0.8">천천히</option>
+        <option value="0.95">보통</option>
+        <option value="1.1">빠르게</option>
+      </select>
+    </div>
+    <div class="acts">
+      <button class="act primary" id="saveSettings" type="button">저장</button>
+      <button class="act" id="testVoice" type="button">🔊 음성 테스트</button>
+      <button class="act" id="clearLog" type="button">대화 기록 지우기</button>
+    </div>
+    <div class="help" id="voiceInfo"></div>
+  </div>
+</div>
+
+<div class="big" id="big" hidden>
+  <div class="big-body" id="bigBody">
+    <div class="big-out" id="bigOut"></div>
+    <div class="big-sub" id="bigSub"></div>
+  </div>
+  <div class="big-bar">
+    <button class="act" id="bigFlip" type="button">↻ 뒤집기</button>
+    <button class="act" id="bigSpeak" type="button">🔊 읽기</button>
+    <button class="act primary" id="bigClose" type="button">닫기</button>
+  </div>
+</div>
+
+<script>
+const PHRASES = {
+  "기본":[
+    ["안녕하세요.","こんにちは。","곤니치와"],
+    ["감사합니다.","ありがとうございます。","아리가토- 고자이마스"],
+    ["죄송합니다.","すみません。","스미마셍"],
+    ["번역 앱이에요. 버튼을 누르고 말씀해 주세요.","翻訳アプリです。ボタンを押して話してください。","혼야쿠 아푸리데스. 보탄오 오시테 하나시테 쿠다사이"],
+    ["화장실은 어디예요?","トイレはどこですか？","토이레와 도코데스카"],
+    ["일본어를 못해요.","日本語が話せません。","니혼고가 하나세마셍"]
+  ],
+  "식당":[
+    ["두 명이요.","二人です。","후타리데스"],
+    ["한국어 메뉴 있나요?","韓国語のメニューはありますか？","칸코쿠고노 메뉴-와 아리마스카"],
+    ["추천 메뉴가 뭐예요?","おすすめは何ですか？","오스스메와 난데스카"],
+    ["이거 주세요.","これをください。","코레오 쿠다사이"],
+    ["물 주세요.","お水をください。","오미즈오 쿠다사이"],
+    ["계산해 주세요.","お会計お願いします。","오카이케- 오네가이시마스"],
+    ["카드 되나요?","カードは使えますか？","카-도와 츠카에마스카"]
+  ],
+  "교통":[
+    ["가장 가까운 역은 어디예요?","一番近い駅はどこですか？","이치반 치카이 에키와 도코데스카"],
+    ["이 주소로 가 주세요.","この住所までお願いします。","코노 쥬-쇼마데 오네가이시마스"],
+    ["표는 어디서 사요?","切符はどこで買えますか？","킷푸와 도코데 카에마스카"],
+    ["얼마나 걸려요?","どのくらいかかりますか？","도노쿠라이 카카리마스카"]
+  ],
+  "쇼핑":[
+    ["얼마예요?","いくらですか？","이쿠라데스카"],
+    ["면세 되나요?","免税できますか？","멘제- 데키마스카"],
+    ["입어 봐도 돼요?","試着してもいいですか？","시챠쿠시테모 이이데스카"],
+    ["다른 사이즈 있어요?","他のサイズはありますか？","호카노 사이즈와 아리마스카"],
+    ["봉투는 필요 없어요.","袋は要りません。","후쿠로와 이리마셍"]
+  ],
+  "숙소":[
+    ["체크인하려고요.","チェックインをお願いします。","쳇쿠인오 오네가이시마스"],
+    ["짐 맡길 수 있나요?","荷物を預かってもらえますか？","니모츠오 아즈캇테 모라에마스카"],
+    ["와이파이 비밀번호가 뭐예요?","Wi-Fiのパスワードは何ですか？","와이파이노 파스와-도와 난데스카"],
+    ["체크아웃은 몇 시예요?","チェックアウトは何時ですか？","쳇쿠아우토와 난지데스카"]
+  ],
+  "긴급":[
+    ["도와주세요.","助けてください。","타스케테 쿠다사이"],
+    ["길을 잃었어요.","道に迷いました。","미치니 마요이마시타"],
+    ["병원에 가고 싶어요.","病院に行きたいです。","뵤-인니 이키타이데스"],
+    ["경찰을 불러 주세요.","警察を呼んでください。","케-사츠오 욘데 쿠다사이"]
+  ]
+};
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+let apiKey = store.get("gemKey","");
+let model = store.get("gemModel","gemini-3.8-flash");
+let rate = parseFloat(store.get("ttsRate","0.95"));
+let autoSpeak = store.get("autoSpeak","1")==="1";
+let entries = []; try{ entries = JSON.parse(store.get("log","[]")).slice(-50); }catch(e){}
+const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50)));
+
+const logEl=$("log"), emptyEl=$("empty"), banner=$("banner"), micBtn=$("mic"), levelEl=$("level");
+function showBanner(t){ banner.textContent=t; banner.hidden=!t; }
+function checkKey(){ showBanner(apiKey ? "" : "⚙︎ 설정에서 Gemini API 키를 먼저 입력해 주세요. 자주 쓰는 문장은 키 없이도 쓸 수 있습니다."); }
+
+// ---------- 음성 출력 ----------
+let voices=[];
+function loadVoices(){ try{ voices=speechSynthesis.getVoices(); }catch(e){} }
+if ("speechSynthesis" in window){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+function speak(text, lang){
+  if (!("speechSynthesis" in window) || !text) return;
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang = lang==="ja" ? "ja-JP" : "ko-KR";
+    const v = voices.find(v=>v.lang && v.lang.toLowerCase().replace("_","-").startsWith(lang));
+    if (v) u.voice=v;
+    u.rate=rate;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+const speakBtn=$("speakToggle");
+function renderSpeak(){ speakBtn.setAttribute("aria-pressed",String(autoSpeak)); speakBtn.textContent = autoSpeak?"🔊 읽기":"🔇 끔"; }
+speakBtn.onclick=()=>{ autoSpeak=!autoSpeak; store.set("autoSpeak",autoSpeak?"1":"0"); if(!autoSpeak) try{speechSynthesis.cancel();}catch(e){} renderSpeak(); };
+renderSpeak();
+
+let wakeLock=null;
+async function keepAwake(){ if(wakeLock||!navigator.wakeLock) return; try{ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>wakeLock=null);}catch(e){} }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") keepAwake(); });
+
+// ---------- 자주 쓰는 문장 ----------
+let currentTab="기본";
+function renderTabs(){
+  const t=$("tabs"); t.innerHTML="";
+  Object.keys(PHRASES).forEach(name=>{
+    const b=document.createElement("button"); b.type="button"; b.className="tab"; b.setAttribute("role","tab");
+    b.textContent=name; b.setAttribute("aria-selected",String(name===currentTab));
+    b.onclick=()=>{ currentTab=name; renderTabs(); renderChips(); };
+    t.append(b);
+  });
+}
+function renderChips(){
+  const c=$("chips"); c.innerHTML="";
+  PHRASES[currentTab].forEach(([ko,ja,pron])=>{
+    const b=document.createElement("button"); b.type="button"; b.className="chip"; b.textContent=ko;
+    b.onclick=()=>addDone({from:"ko",src:ko,out:ja,pron});
+    c.append(b);
+  });
+}
+renderTabs(); renderChips();
+
+// ---------- 대화 기록 ----------
+function card(e){
+  const c=document.createElement("article"); c.className="card";
+  const to=e.from==="ko"?"ja":"ko";
+  if (e.src){
+    const s=document.createElement("div"); s.className="src";
+    if (e.from){ const tag=document.createElement("span"); tag.className="tag "+e.from; tag.textContent=e.from==="ko"?"한국어":"日本語"; s.append(tag); }
+    s.append(document.createTextNode(e.src)); c.append(s);
+  }
+  if (e.pending){ const t=document.createElement("div"); t.className="thinking"; t.textContent=e.pending; c.append(t); return c; }
+  if (e.error){ const t=document.createElement("div"); t.className="err"; t.textContent=e.error; c.append(t); return c; }
+  const o=document.createElement("div"); o.className="out "+to; o.lang=to; o.textContent=e.out; c.append(o);
+  if (e.pron){ const p=document.createElement("div"); p.className="pron"; p.textContent="발음 · "+e.pron; c.append(p); }
+  if (e.note){ const n=document.createElement("div"); n.className="note"; n.textContent=e.note; c.append(n); }
+  const a=document.createElement("div"); a.className="acts";
+  const s=document.createElement("button"); s.type="button"; s.className="act"; s.textContent="🔊 읽기"; s.onclick=()=>speak(e.out,to);
+  const b=document.createElement("button"); b.type="button"; b.className="act primary"; b.textContent="크게 보여주기"; b.onclick=()=>openBig(e);
+  a.append(s,b); c.append(a);
+  return c;
+}
+function render(){
+  logEl.querySelectorAll(".card").forEach(n=>n.remove());
+  emptyEl.hidden = entries.length>0;
+  entries.forEach(e=>logEl.append(card(e)));
+  requestAnimationFrame(()=>{ logEl.scrollTop=logEl.scrollHeight; });
+}
+function addDone(e){
+  entries.push(e); render(); saveLog(); keepAwake();
+  if (autoSpeak) speak(e.out, e.from==="ko"?"ja":"ko");
+}
+render();
+
+// ---------- 크게 보기 ----------
+let bigEntry=null;
+function openBig(e){
+  bigEntry=e; const to=e.from==="ko"?"ja":"ko";
+  const o=$("bigOut"); o.className="big-out "+to; o.lang=to; o.textContent=e.out;
+  $("bigSub").textContent=e.src||"";
+  $("bigBody").classList.remove("flip"); $("big").hidden=false;
+}
+$("bigClose").onclick=()=>$("big").hidden=true;
+$("bigFlip").onclick=()=>$("bigBody").classList.toggle("flip");
+$("bigSpeak").onclick=()=>{ if(bigEntry) speak(bigEntry.out, bigEntry.from==="ko"?"ja":"ko"); };
+
+// ---------- 설정 ----------
+$("openSettings").onclick=()=>{
+  $("keyIn").value=apiKey; $("modelSel").value=model; $("rateSel").value=String(rate);
+  const ja=voices.some(v=>v.lang&&v.lang.toLowerCase().startsWith("ja")), ko=voices.some(v=>v.lang&&v.lang.toLowerCase().startsWith("ko"));
+  $("voiceInfo").textContent = `이 휴대폰 음성: 일본어 ${ja?"있음":"없음(설정 → 텍스트 음성 변환에서 일본어 설치)"} · 한국어 ${ko?"있음":"없음"}`;
+  $("settings").hidden=false;
+};
+$("saveSettings").onclick=()=>{
+  apiKey=$("keyIn").value.trim(); model=$("modelSel").value; rate=parseFloat($("rateSel").value);
+  store.set("gemKey",apiKey); store.set("gemModel",model); store.set("ttsRate",String(rate));
+  $("settings").hidden=true; checkKey();
+};
+$("testVoice").onclick=()=>{ rate=parseFloat($("rateSel").value); speak("こんにちは。よろしくお願いします。","ja"); setTimeout(()=>speak("안녕하세요. 반갑습니다.","ko"),2600); };
+$("clearLog").onclick=()=>{ entries=[]; saveLog(); render(); $("settings").hidden=true; };
+checkKey();
+if (!apiKey) setTimeout(()=>$("openSettings").click(), 300);
+
+// ---------- Gemini 호출 ----------
+const SCHEMA = {
+  type:"OBJECT",
+  properties:{
+    from:{type:"STRING",enum:["ko","ja","none"]},
+    src:{type:"STRING"},
+    out:{type:"STRING"},
+    pron:{type:"STRING"},
+    note:{type:"STRING"}
+  },
+  required:["from","src","out","pron","note"]
+};
+function instructions(kind){
+  const ctx = entries.filter(e=>e.out && e.src).slice(-4)
+    .map(e=>`[${e.from==="ko"?"Korean":"Japanese"}] ${e.src} → ${e.out}`).join("\n");
+  return `You are an expert Korean–Japanese interpreter helping a Korean traveler talk with people in Japan (restaurants, stations, shops, hotels, taxis, emergencies).
+${kind==="audio" ? "Listen to the attached audio. Identify whether the speaker is speaking Korean or Japanese, and transcribe exactly what they said." : "The TEXT below was typed by one of the speakers. Identify whether it is Korean or Japanese."}
+Think about the situation and the likely intent, then translate naturally — the way a skilled human interpreter would say it, not word-for-word.
+- Korean → Japanese: polite spoken Japanese (です/ます; use honorifics where a local would). In "pron", write how to pronounce that Japanese in Korean Hangul (e.g. "코레오 쿠다사이").
+- Japanese → Korean: natural polite Korean (해요체). "pron" must be "".
+- "src": the transcript/original in its own language, with correct punctuation.
+- "note": empty unless something important needs flagging for the Korean traveler (e.g. the speaker asked a question that needs an answer, mentioned a price, time, platform number, or there was ambiguity). Write the note in Korean, one short sentence.
+- If there is no intelligible speech, set from:"none" and leave other fields empty.
+${ctx ? "Recent conversation for context (oldest first):\n"+ctx : ""}`;
+}
+async function callGemini(parts){
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const res=await fetch(url,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":apiKey},
+    body:JSON.stringify({
+      contents:[{role:"user",parts}],
+      generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA,temperature:0.3}
+    })
+  });
+  if(!res.ok){
+    let msg=""; try{ msg=(await res.json()).error?.message||""; }catch(e){}
+    const err=new Error(msg); err.status=res.status; throw err;
+  }
+  const data=await res.json();
+  const ps=data.candidates?.[0]?.content?.parts||[];
+  const txt=ps.filter(p=>p.text && !p.thought).map(p=>p.text).join("");
+  return JSON.parse(txt);
+}
+function errMsg(err){
+  if (!navigator.onLine) return "인터넷에 연결되어 있지 않습니다. 데이터·와이파이를 확인해 주세요.";
+  if (err.status===400 && /key/i.test(err.message)) return "API 키가 올바르지 않습니다. ⚙︎ 설정에서 다시 입력해 주세요.";
+  if (err.status===401||err.status===403) return "API 키 권한 오류입니다. 키가 맞는지, 키 제한(웹사이트 주소) 설정을 확인해 주세요.";
+  if (err.status===404) return "선택한 AI 모델을 찾을 수 없습니다. ⚙︎ 설정에서 다른 모델을 골라 주세요.";
+  if (err.status===429) return "사용량 한도에 걸렸습니다. 잠시 후 다시 시도하거나 결제 설정을 확인해 주세요.";
+  if (err instanceof SyntaxError) return "AI 응답을 읽지 못했습니다. 다시 한 번 말해 주세요.";
+  return "번역하지 못했습니다. 다시 시도해 주세요." + (err.message?` (${err.message.slice(0,80)})`:"");
+}
+async function translate(parts, placeholder){
+  const e={src:placeholder.src||"", from:placeholder.from, pending:"AI가 듣고 번역하는 중… 翻訳中…"};
+  entries.push(e); render();
+  try{
+    const r=await callGemini(parts);
+    if (!r || r.from==="none" || !r.out){ entries=entries.filter(x=>x!==e); render(); flashMic("말소리를 알아듣지 못했습니다. 다시 눌러 주세요."); return; }
+    Object.assign(e,{from:r.from==="ja"?"ja":"ko", src:r.src||e.src, out:r.out, pron:r.from==="ko"?(r.pron||""):"", note:r.note||""});
+    delete e.pending; render(); saveLog(); keepAwake();
+    if (autoSpeak) speak(e.out, e.from==="ko"?"ja":"ko");
+  }catch(err){
+    delete e.pending; e.error=errMsg(err); render();
+    entries=entries.filter(x=>x!==e);
+  }
+}
+
+// 텍스트 입력
+$("textForm").addEventListener("submit",ev=>{
+  ev.preventDefault();
+  const t=$("textIn").value.trim(); if(!t) return;
+  if(!apiKey){ $("openSettings").click(); return; }
+  $("textIn").value="";
+  const guess=/[぀-ヿ]/.test(t)?"ja":"ko";
+  translate([{text:instructions("text")+"\n\nTEXT:\n"+t}], {src:t, from:guess});
+});
+
+// ---------- 녹음 (말 끝나면 자동 정지) ----------
+let rec=null, stream=null, actx=null, chunks=[], vadTimer=null, startedAt=0;
+function micIdle(label){
+  micBtn.classList.remove("rec"); micBtn.disabled=false;
+  micBtn.innerHTML = label || '🎤 말하기<small>押して話してください</small>';
+  levelEl.style.width="0";
+}
+function flashMic(t){ micIdle(`🎤 다시 말하기<small>${t}</small>`); setTimeout(()=>{ if(!rec) micIdle(); },3500); }
+
+async function startRec(){
+  if(!apiKey){ $("openSettings").click(); return; }
+  try{ speechSynthesis.cancel(); }catch(e){}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  }catch(e){ showBanner("마이크 권한이 필요합니다. 주소창 왼쪽 자물쇠 → 권한 → 마이크 허용 후 다시 눌러 주세요."); return; }
+  chunks=[];
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+  rec = new MediaRecorder(stream, mime?{mimeType:mime}:undefined);
+  rec.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  rec.onstop=onStopped;
+  rec.start();
+  startedAt=Date.now();
+  micBtn.classList.add("rec");
+  micBtn.innerHTML='■ 듣는 중… 누르면 끝<small>聞いています…</small>';
+
+  // 음성 감지: 말이 시작된 뒤 1.3초 조용하면 자동 종료, 최대 30초
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  const an=actx.createAnalyser(); an.fftSize=1024;
+  actx.createMediaStreamSource(stream).connect(an);
+  const buf=new Float32Array(an.fftSize);
+  let spoke=false, quietSince=0;
+  vadTimer=setInterval(()=>{
+    an.getFloatTimeDomainData(buf);
+    let s=0; for(const v of buf) s+=v*v; const rms=Math.sqrt(s/buf.length);
+    levelEl.style.width=Math.min(100,rms*900)+"%";
+    const now=Date.now();
+    if(rms>0.025){ spoke=true; quietSince=0; }
+    else if(spoke){ if(!quietSince) quietSince=now; else if(now-quietSince>1300) stopRec(); }
+    if(now-startedAt>30000) stopRec();
+    if(!spoke && now-startedAt>8000) stopRec(true);
+  },100);
+}
+let cancelled=false;
+function stopRec(cancel=false){
+  if(!rec || rec.state!=="recording") return;
+  cancelled=cancel;
+  clearInterval(vadTimer);
+  rec.stop();
+}
+async function onStopped(){
+  stream.getTracks().forEach(t=>t.stop());
+  try{ actx && actx.close(); }catch(e){}
+  rec=null;
+  if(cancelled){ flashMic("말소리가 들리지 않았습니다."); return; }
+  micBtn.disabled=true; micBtn.classList.remove("rec");
+  micBtn.innerHTML='번역 중…<small>翻訳中…</small>'; levelEl.style.width="0";
+  try{
+    const wav=await toWav(new Blob(chunks,{type:chunks[0]?.type||"audio/webm"}));
+    const b64=await blobToB64(wav);
+    await translate([{text:instructions("audio")},{inline_data:{mime_type:"audio/wav",data:b64}}], {src:"", from:""});
+  }catch(e){
+    showBanner("녹음을 처리하지 못했습니다. 다시 시도해 주세요.");
+  }
+  if(!rec) micIdle();
+}
+micBtn.onclick=()=>{ if(rec && rec.state==="recording") stopRec(); else startRec(); };
+
+// webm → 16kHz 모노 WAV (Gemini 호환 형식)
+async function toWav(blob){
+  const ab=await blob.arrayBuffer();
+  const c=new (window.AudioContext||window.webkitAudioContext)();
+  const decoded=await c.decodeAudioData(ab); c.close();
+  const sr=16000, len=Math.max(1,Math.ceil(decoded.duration*sr));
+  const off=new OfflineAudioContext(1,len,sr);
+  const src=off.createBufferSource(); src.buffer=decoded; src.connect(off.destination); src.start();
+  const out=(await off.startRendering()).getChannelData(0);
+  const dv=new DataView(new ArrayBuffer(44+out.length*2));
+  const w=(o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,"RIFF"); dv.setUint32(4,36+out.length*2,true); w(8,"WAVE"); w(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,sr,true); dv.setUint32(28,sr*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true);
+  w(36,"data"); dv.setUint32(40,out.length*2,true);
+  for(let i=0;i<out.length;i++){ const v=Math.max(-1,Math.min(1,out[i])); dv.setInt16(44+i*2, v<0?v*0x8000:v*0x7fff, true); }
+  return new Blob([dv],{type:"audio/wav"});
+}
+function blobToB64(blob){
+  return new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(",")[1]); r.onerror=no; r.readAsDataURL(blob); });
+}
+</script>
+</body>
+</html>
