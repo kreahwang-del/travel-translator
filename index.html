@@ -80,6 +80,22 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
 .item .row .ko{flex:1;min-width:0}
 .item .price{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
 .item .inote{font-size:13px;color:var(--muted)}
+.thumbbtn{border:none;padding:0;background:none;cursor:pointer;display:block;width:100%}
+/* 사진 위 번역 뷰어: 사진 위에 놓이므로 테마와 무관한 고정 색 사용 */
+.lens{position:fixed;inset:0;z-index:25;background:#000;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.lens-scroll{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;min-height:0}
+.lens-stage{position:relative;width:100%;max-width:900px;line-height:0}
+.lens-stage img{width:100%;height:auto;display:block}
+.lab{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(255,255,255,.93);color:#111;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.15);line-height:1.15;font-family:var(--font-ko);font-weight:500;overflow:hidden;cursor:pointer;padding:0 2px;white-space:nowrap}
+.lab.wrap{white-space:normal;word-break:keep-all;overflow-wrap:anywhere}
+.lens.orig .lab{opacity:0;pointer-events:none}
+.lens-bar{display:flex;gap:8px;padding:10px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));background:#111}
+.lens-bar button{flex:1;border:1px solid #444;background:#222;color:#eee;border-radius:10px;padding:12px;font-size:15px;cursor:pointer}
+.lens-bar button.primary{background:#e8ecf3;color:#111;border-color:#e8ecf3;font-weight:700}
+.lens-info{background:#111;color:#e8ecf3;padding:12px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:4px;font-size:15px;line-height:1.5}
+.lens-info .ja{font-family:var(--font-ja);color:#9aa5b8;font-size:13px}
+.lens-info .ko{font-size:18px;font-weight:500}
+.lens-info .meta{color:#9aa5b8;font-size:13px}
 .mic:disabled{opacity:.55}
 .level{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
 .level i{display:block;height:100%;width:0;background:var(--rec);transition:width .08s}
@@ -181,6 +197,16 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
   </div>
 </div>
 
+<div class="lens" id="lens" hidden>
+  <div class="lens-scroll"><div class="lens-stage" id="lensStage"><img id="lensImg" alt="번역할 사진"></div></div>
+  <div class="lens-info" id="lensInfo"><div class="meta">번역된 부분을 누르면 원문과 설명이 여기에 나옵니다. 두 손가락으로 확대할 수 있습니다.</div></div>
+  <div class="lens-bar">
+    <button type="button" id="lensToggle">원문 보기</button>
+    <button type="button" id="lensList">목록 보기</button>
+    <button type="button" class="primary" id="lensClose">닫기</button>
+  </div>
+</div>
+
 <div class="big" id="big" hidden>
   <div class="big-body" id="bigBody">
     <div class="big-out" id="bigOut"></div>
@@ -249,7 +275,7 @@ let model = store.get("gemModel","gemini-3.8-flash");
 let rate = parseFloat(store.get("ttsRate","0.95"));
 let autoSpeak = store.get("autoSpeak","1")==="1";
 let entries = []; try{ entries = JSON.parse(store.get("log","[]")).slice(-50); }catch(e){}
-const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50).map(({thumb,...r})=>r)));
+const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50).map(({thumb,full,...r})=>r)));
 
 const logEl=$("log"), emptyEl=$("empty"), banner=$("banner"), micBtn=$("mic"), levelEl=$("level");
 function showBanner(t){ banner.textContent=t; banner.hidden=!t; }
@@ -306,7 +332,11 @@ function el(tag,cls,text){ const n=document.createElement(tag); if(cls) n.classN
 function photoCard(e){
   const c=el("article","card");
   const s=el("div","src"); const tag=el("span","tag ja","📷 사진"); s.append(tag, document.createTextNode(e.title||"")); c.append(s);
-  if (e.thumb){ const im=el("img","thumb"); im.src=e.thumb; im.alt="찍은 사진"; c.append(im); }
+  if (e.thumb){
+    const im=el("img","thumb"); im.src=e.thumb; im.alt="찍은 사진";
+    if (e.full && !e.pending && !e.error){ const tb=el("button","thumbbtn"); tb.type="button"; tb.append(im); tb.onclick=()=>openLens(e); c.append(tb); }
+    else c.append(im);
+  }
   if (e.pending){ c.append(el("div","thinking",e.pending)); return c; }
   if (e.error){ c.append(el("div","err",e.error)); return c; }
   if (e.summary) c.append(el("div","summary",e.summary));
@@ -325,6 +355,7 @@ function photoCard(e){
   }
   if (e.tip) c.append(el("div","note",e.tip));
   const a=el("div","acts");
+  if (e.full){ const lb=el("button","act primary","📷 사진 위에 보기"); lb.type="button"; lb.onclick=()=>openLens(e); a.append(lb); }
   const sp=el("button","act","🔊 요약 읽기"); sp.type="button"; sp.onclick=()=>speak(e.summary,"ko");
   a.append(sp); c.append(a);
   return c;
@@ -481,8 +512,9 @@ const PHOTO_SCHEMA={
     title:{type:"STRING"},
     summary:{type:"STRING"},
     items:{type:"ARRAY",items:{type:"OBJECT",properties:{
-      ja:{type:"STRING"}, ko:{type:"STRING"}, price:{type:"STRING"}, note:{type:"STRING"}
-    },required:["ja","ko","price","note"]}},
+      ja:{type:"STRING"}, ko:{type:"STRING"}, label:{type:"STRING"}, price:{type:"STRING"}, note:{type:"STRING"},
+      box:{type:"ARRAY",items:{type:"INTEGER"}}
+    },required:["ja","ko","label","price","note","box"]}},
     tip:{type:"STRING"}
   },
   required:["title","summary","items","tip"]
@@ -492,7 +524,9 @@ Read ALL Japanese (and other foreign) text in the image and explain it in natura
 - "title": what this is, in Korean, a few words (e.g. "라멘집 메뉴판", "역 출구 안내", "약 포장 설명").
 - "summary": 1-2 Korean sentences with the key point a traveler needs (what to do / what it says).
 - "items": each meaningful line or entry in reading order. "ja" = original text as written; "ko" = natural Korean translation (for dishes, add a short explanation of what it is in Korean if not obvious, e.g. "돈코츠 라멘 (돼지뼈 육수)"); "price" = price with currency as shown (e.g. "¥980", "税込1,078円") or ""; "note" = short Korean note only if useful (allergens, spicy, limited time, set includes, warnings), else "".
-  For long documents, group minor lines; keep at most 40 items.
+  "label" = a SHORT Korean rendering to print over the original text in the photo — about as long as the original, no explanations or parentheses (e.g. "돈코츠 라멘"). Keep numbers/prices as in the original if they are part of that text.
+  "box" = the bounding box of that original text in the image as [ymin, xmin, ymax, xmax], integers normalized to 0-1000. One box per text line/block; boxes must tightly cover the original text.
+  Keep at most 40 items; for long documents, merge minor lines into one item with one box.
 - "tip": one short Korean sentence of practical advice if helpful (e.g. how to order at the ticket machine, tax included or not), else "".
 If there is no readable text, describe the image briefly in "summary" and return empty items.`;
 
@@ -507,7 +541,7 @@ async function shrink(file){
     const tk=Math.min(1, 480/Math.max(cv.width,cv.height));
     const tc=document.createElement("canvas"); tc.width=Math.round(cv.width*tk); tc.height=Math.round(cv.height*tk);
     tc.getContext("2d").drawImage(cv,0,0,tc.width,tc.height);
-    return {b64:full.split(",")[1], thumb:tc.toDataURL("image/jpeg",0.7)};
+    return {b64:full.split(",")[1], thumb:tc.toDataURL("image/jpeg",0.7), full};
   } finally { URL.revokeObjectURL(url); }
 }
 async function translatePhoto(file){
@@ -517,18 +551,64 @@ async function translatePhoto(file){
   const e={kind:"photo", pending:"사진 속 글자를 읽고 번역하는 중… 読み取り中…"};
   entries.push(e); render();
   try{
-    const {b64,thumb}=await shrink(file);
+    const {b64,thumb,full}=await shrink(file);
     e.thumb=thumb; render();
     const r=await callGemini([{text:PHOTO_PROMPT},{inline_data:{mime_type:"image/jpeg",data:b64}}], PHOTO_SCHEMA);
     Object.assign(e,{title:r.title||"", summary:r.summary||"", items:Array.isArray(r.items)?r.items:[], tip:r.tip||""});
+    if (e.items.some(validBox)) e.full=full;
     delete e.pending; render(); saveLog(); keepAwake();
     if (autoSpeak && e.summary) speak(e.summary,"ko");
+    if (e.full) openLens(e);
   }catch(err){
     delete e.pending;
     e.error = (err && err.status) || err instanceof SyntaxError ? errMsg(err) : "사진을 열지 못했습니다. 다른 사진으로 다시 시도해 주세요.";
     render(); entries=entries.filter(x=>x!==e);
   }finally{ camBtn.disabled=false; }
 }
+// ---------- 사진 위 번역 뷰어 ----------
+function validBox(it){ const b=it&&it.box; return Array.isArray(b)&&b.length===4&&b.every(n=>Number.isFinite(+n))&&+b[2]>+b[0]&&+b[3]>+b[1]; }
+let lensEntry=null;
+const lens=$("lens"), stage=$("lensStage"), lensImg=$("lensImg"), lensInfo=$("lensInfo");
+function openLens(e){
+  lensEntry=e; lens.classList.remove("orig"); $("lensToggle").textContent="원문 보기";
+  stage.querySelectorAll(".lab").forEach(n=>n.remove());
+  lensInfo.innerHTML='<div class="meta">번역된 부분을 누르면 원문과 설명이 여기에 나옵니다. 두 손가락으로 확대할 수 있습니다.</div>';
+  lens.hidden=false;
+  lensImg.onload=placeLabels;
+  lensImg.src=e.full;
+  if (lensImg.complete && lensImg.naturalWidth) placeLabels();
+}
+function placeLabels(){
+  if(!lensEntry) return;
+  stage.querySelectorAll(".lab").forEach(n=>n.remove());
+  const W=stage.clientWidth, H=lensImg.clientHeight;
+  lensEntry.items.filter(validBox).forEach(it=>{
+    let [y0,x0,y1,x1]=it.box.map(n=>Math.max(0,Math.min(1000,+n)));
+    const lab=el("div","lab",it.label||it.ko||"");
+    lab.style.left=(x0/10)+"%"; lab.style.top=(y0/10)+"%";
+    lab.style.width=((x1-x0)/10)+"%"; lab.style.height=((y1-y0)/10)+"%";
+    lab.onclick=()=>showInfo(it);
+    stage.append(lab);
+    // 글자 크기 맞추기: 상자 높이 기준으로 시작해 넘치면 줄임, 너무 작아지면 줄바꿈 허용
+    const bw=(x1-x0)/1000*W, bh=(y1-y0)/1000*H;
+    let fs=Math.max(9,Math.min(bh*0.78,40));
+    lab.style.fontSize=fs+"px";
+    while(lab.scrollWidth>bw+1 && fs>11){ fs-=1; lab.style.fontSize=fs+"px"; }
+    if(lab.scrollWidth>bw+1){ lab.classList.add("wrap"); while(lab.scrollHeight>bh+1 && fs>8){ fs-=1; lab.style.fontSize=fs+"px"; } }
+  });
+}
+function showInfo(it){
+  lensInfo.innerHTML="";
+  if(it.ja){ const j=el("div","ja",it.ja); j.lang="ja"; lensInfo.append(j); }
+  lensInfo.append(el("div","ko",(it.ko||"")+(it.price?"  "+it.price:"")));
+  if(it.note) lensInfo.append(el("div","meta",it.note));
+  speak(it.ko,"ko");
+}
+window.addEventListener("resize",()=>{ if(!lens.hidden) placeLabels(); });
+$("lensToggle").onclick=()=>{ const o=lens.classList.toggle("orig"); $("lensToggle").textContent=o?"번역 보기":"원문 보기"; };
+$("lensList").onclick=()=>{ lens.hidden=true; };
+$("lensClose").onclick=()=>{ lens.hidden=true; };
+
 $("cam").onclick=()=>{ if(!apiKey){ $("openSettings").click(); return; } $("camIn").click(); };
 $("gal").onclick=()=>{ if(!apiKey){ $("openSettings").click(); return; } $("galIn").click(); };
 ["camIn","galIn"].forEach(id=>$(id).addEventListener("change",ev=>{ const f=ev.target.files[0]; ev.target.value=""; translatePhoto(f); }));
