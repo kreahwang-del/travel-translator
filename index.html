@@ -65,6 +65,21 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
 .mic{width:100%;border:none;border-radius:16px;padding:18px;font-size:19px;font-weight:700;background:var(--ai);color:var(--surface);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
 .mic small{font-size:13px;font-weight:400;opacity:.85;font-family:var(--font-ja)}
 .mic.rec{background:var(--rec)}
+.microw{display:flex;gap:8px}
+.microw .mic{flex:1;min-width:0}
+.cam{flex:none;width:86px;border:none;border-radius:16px;background:var(--ko);color:var(--surface);font-size:16px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.cam small{font-size:12px;font-weight:400;opacity:.85}
+.cam:disabled{opacity:.55}
+.thumb{width:100%;max-height:180px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.summary{font-size:18px;font-weight:500;line-height:1.5;color:var(--ko)}
+.items{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
+.item{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--line)}
+.item .ja{font-family:var(--font-ja);font-size:13px;color:var(--muted)}
+.item .ko{font-size:17px;line-height:1.45}
+.item .row{display:flex;gap:8px;align-items:baseline}
+.item .row .ko{flex:1;min-width:0}
+.item .price{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.item .inote{font-size:13px;color:var(--muted)}
 .mic:disabled{opacity:.55}
 .level{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
 .level i{display:block;height:100%;width:0;background:var(--rec);transition:width .08s}
@@ -111,16 +126,23 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
     <div class="empty" id="empty">
       <b>🎤 말하기</b>를 누르고 말하면, 말이 끝난 뒤 자동으로 멈추고 번역합니다.<br>
       한국어·일본어는 AI가 듣고 알아서 구분합니다. 일본 분께도 버튼만 누르고 말해 달라고 하세요.<br>
-      <b>크게 보여주기</b>로 상대에게 화면을 보여줄 수 있습니다.
+      <b>크게 보여주기</b>로 상대에게 화면을 보여줄 수 있습니다.<br>
+      <b>📷 사진 번역</b>: 메뉴판·안내문·표지판을 찍으면 한국어로 풀어 줍니다. 🖼 버튼은 앨범 사진용입니다.
     </div>
   </main>
 
   <div class="dock pad">
     <div class="level" aria-hidden="true"><i id="level"></i></div>
-    <button class="mic" id="mic" type="button">🎤 말하기<small>押して話してください</small></button>
+    <div class="microw">
+      <button class="mic" id="mic" type="button">🎤 말하기<small>押して話してください</small></button>
+      <button class="cam" id="cam" type="button">📷<small>사진 번역</small></button>
+    </div>
+    <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
+    <input type="file" id="galIn" accept="image/*" hidden>
     <form class="textrow" id="textForm">
       <input id="textIn" placeholder="글로 입력 · 文字で入力" autocomplete="off">
       <button type="submit">번역</button>
+      <button type="button" id="gal" aria-label="앨범 사진 번역">🖼</button>
     </form>
   </div>
 </div>
@@ -227,7 +249,7 @@ let model = store.get("gemModel","gemini-3.8-flash");
 let rate = parseFloat(store.get("ttsRate","0.95"));
 let autoSpeak = store.get("autoSpeak","1")==="1";
 let entries = []; try{ entries = JSON.parse(store.get("log","[]")).slice(-50); }catch(e){}
-const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50)));
+const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50).map(({thumb,...r})=>r)));
 
 const logEl=$("log"), emptyEl=$("empty"), banner=$("banner"), micBtn=$("mic"), levelEl=$("level");
 function showBanner(t){ banner.textContent=t; banner.hidden=!t; }
@@ -280,7 +302,35 @@ function renderChips(){
 renderTabs(); renderChips();
 
 // ---------- 대화 기록 ----------
+function el(tag,cls,text){ const n=document.createElement(tag); if(cls) n.className=cls; if(text!=null) n.textContent=text; return n; }
+function photoCard(e){
+  const c=el("article","card");
+  const s=el("div","src"); const tag=el("span","tag ja","📷 사진"); s.append(tag, document.createTextNode(e.title||"")); c.append(s);
+  if (e.thumb){ const im=el("img","thumb"); im.src=e.thumb; im.alt="찍은 사진"; c.append(im); }
+  if (e.pending){ c.append(el("div","thinking",e.pending)); return c; }
+  if (e.error){ c.append(el("div","err",e.error)); return c; }
+  if (e.summary) c.append(el("div","summary",e.summary));
+  if (e.items && e.items.length){
+    const list=el("div","items");
+    e.items.forEach(it=>{
+      const r=el("div","item");
+      if (it.ja){ const j=el("div","ja",it.ja); j.lang="ja"; r.append(j); }
+      const row=el("div","row"); row.append(el("div","ko",it.ko||""));
+      if (it.price) row.append(el("div","price",it.price));
+      r.append(row);
+      if (it.note) r.append(el("div","inote",it.note));
+      list.append(r);
+    });
+    c.append(list);
+  }
+  if (e.tip) c.append(el("div","note",e.tip));
+  const a=el("div","acts");
+  const sp=el("button","act","🔊 요약 읽기"); sp.type="button"; sp.onclick=()=>speak(e.summary,"ko");
+  a.append(sp); c.append(a);
+  return c;
+}
 function card(e){
+  if (e.kind==="photo") return photoCard(e);
   const c=document.createElement("article"); c.className="card";
   const to=e.from==="ko"?"ja":"ko";
   if (e.src){
@@ -367,11 +417,11 @@ ${ctx ? "Recent conversation for context (oldest first):\n"+ctx : ""}`;
 }
 // 혼잡·일시 오류 시 다른 모델로 자동 전환
 const FALLBACKS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-argon"];
-async function callGemini(parts){
+async function callGemini(parts, schema=SCHEMA){
   const order=[model, ...FALLBACKS.filter(m=>m!==model)];
   let lastErr;
   for(const m of order){
-    try{ return await callModel(m, parts); }
+    try{ return await callModel(m, parts, schema); }
     catch(err){
       lastErr=err;
       const busy = err.status===503 || err.status===500 || err.status===404 ||
@@ -381,14 +431,14 @@ async function callGemini(parts){
   }
   throw lastErr;
 }
-async function callModel(model, parts){
+async function callModel(model, parts, schema){
   const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res=await fetch(url,{
     method:"POST",
     headers:{"Content-Type":"application/json","x-goog-api-key":apiKey},
     body:JSON.stringify({
       contents:[{role:"user",parts}],
-      generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA,temperature:0.3}
+      generationConfig:{responseMimeType:"application/json",responseSchema:schema,temperature:0.3}
     })
   });
   if(!res.ok){
@@ -423,6 +473,65 @@ async function translate(parts, placeholder){
     entries=entries.filter(x=>x!==e);
   }
 }
+
+// ---------- 사진 번역 ----------
+const PHOTO_SCHEMA={
+  type:"OBJECT",
+  properties:{
+    title:{type:"STRING"},
+    summary:{type:"STRING"},
+    items:{type:"ARRAY",items:{type:"OBJECT",properties:{
+      ja:{type:"STRING"}, ko:{type:"STRING"}, price:{type:"STRING"}, note:{type:"STRING"}
+    },required:["ja","ko","price","note"]}},
+    tip:{type:"STRING"}
+  },
+  required:["title","summary","items","tip"]
+};
+const PHOTO_PROMPT=`You are helping a Korean traveler in Japan understand a photo (menu, sign, notice, ticket machine, product label, receipt, map, etc.).
+Read ALL Japanese (and other foreign) text in the image and explain it in natural Korean.
+- "title": what this is, in Korean, a few words (e.g. "라멘집 메뉴판", "역 출구 안내", "약 포장 설명").
+- "summary": 1-2 Korean sentences with the key point a traveler needs (what to do / what it says).
+- "items": each meaningful line or entry in reading order. "ja" = original text as written; "ko" = natural Korean translation (for dishes, add a short explanation of what it is in Korean if not obvious, e.g. "돈코츠 라멘 (돼지뼈 육수)"); "price" = price with currency as shown (e.g. "¥980", "税込1,078円") or ""; "note" = short Korean note only if useful (allergens, spicy, limited time, set includes, warnings), else "".
+  For long documents, group minor lines; keep at most 40 items.
+- "tip": one short Korean sentence of practical advice if helpful (e.g. how to order at the ticket machine, tax included or not), else "".
+If there is no readable text, describe the image briefly in "summary" and return empty items.`;
+
+async function shrink(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,no)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=no; i.src=url; });
+    const max=1600, k=Math.min(1, max/Math.max(img.naturalWidth,img.naturalHeight));
+    const cv=document.createElement("canvas"); cv.width=Math.round(img.naturalWidth*k); cv.height=Math.round(img.naturalHeight*k);
+    cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+    const full=cv.toDataURL("image/jpeg",0.85);
+    const tk=Math.min(1, 480/Math.max(cv.width,cv.height));
+    const tc=document.createElement("canvas"); tc.width=Math.round(cv.width*tk); tc.height=Math.round(cv.height*tk);
+    tc.getContext("2d").drawImage(cv,0,0,tc.width,tc.height);
+    return {b64:full.split(",")[1], thumb:tc.toDataURL("image/jpeg",0.7)};
+  } finally { URL.revokeObjectURL(url); }
+}
+async function translatePhoto(file){
+  if(!file) return;
+  if(!apiKey){ $("openSettings").click(); return; }
+  const camBtn=$("cam"); camBtn.disabled=true;
+  const e={kind:"photo", pending:"사진 속 글자를 읽고 번역하는 중… 読み取り中…"};
+  entries.push(e); render();
+  try{
+    const {b64,thumb}=await shrink(file);
+    e.thumb=thumb; render();
+    const r=await callGemini([{text:PHOTO_PROMPT},{inline_data:{mime_type:"image/jpeg",data:b64}}], PHOTO_SCHEMA);
+    Object.assign(e,{title:r.title||"", summary:r.summary||"", items:Array.isArray(r.items)?r.items:[], tip:r.tip||""});
+    delete e.pending; render(); saveLog(); keepAwake();
+    if (autoSpeak && e.summary) speak(e.summary,"ko");
+  }catch(err){
+    delete e.pending;
+    e.error = (err && err.status) || err instanceof SyntaxError ? errMsg(err) : "사진을 열지 못했습니다. 다른 사진으로 다시 시도해 주세요.";
+    render(); entries=entries.filter(x=>x!==e);
+  }finally{ camBtn.disabled=false; }
+}
+$("cam").onclick=()=>{ if(!apiKey){ $("openSettings").click(); return; } $("camIn").click(); };
+$("gal").onclick=()=>{ if(!apiKey){ $("openSettings").click(); return; } $("galIn").click(); };
+["camIn","galIn"].forEach(id=>$(id).addEventListener("change",ev=>{ const f=ev.target.files[0]; ev.target.value=""; translatePhoto(f); }));
 
 // 텍스트 입력
 $("textForm").addEventListener("submit",ev=>{
