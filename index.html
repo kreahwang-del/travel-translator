@@ -80,6 +80,18 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
 .item .row .ko{flex:1;min-width:0}
 .item .price{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
 .item .inote{font-size:13px;color:var(--muted)}
+
+.won{color:var(--ko);font-weight:700;font-variant-numeric:tabular-nums}
+.item .won{display:block;font-size:13px;text-align:right}
+.lab .wonlab{font-weight:700;color:#1d5a37}
+.fx-rate{font-size:14px;color:var(--muted);line-height:1.6}
+.fx-box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.fx-row{display:flex;align-items:center;gap:8px}
+.fx-row input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:24px;font-weight:700;background:var(--bg);color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+.fx-row span{flex:none;width:28px;font-size:20px;font-weight:700;color:var(--muted)}
+.fx-swap{align-self:center;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 14px;cursor:pointer}
+.fx-quick{display:flex;flex-wrap:wrap;gap:6px}
+.fx-quick button{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 10px;font-size:14px;cursor:pointer;font-variant-numeric:tabular-nums}
 .thumbbtn{border:none;padding:0;background:none;cursor:pointer;display:block;width:100%}
 /* 사진 위 번역 뷰어: 사진 위에 놓이므로 테마와 무관한 고정 색 사용 */
 .lens{position:fixed;inset:0;z-index:25;background:#000;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -128,6 +140,7 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
   <header class="pad">
     <h1>한일 여행 통역<small>韓日 旅行通訳</small></h1>
     <button class="pill" id="speakToggle" type="button" aria-pressed="true">🔊 읽기</button>
+    <button class="pill" id="openFx" type="button" aria-label="환율 계산기">¥→₩</button>
     <button class="pill" id="openSettings" type="button" aria-label="설정">⚙︎</button>
   </header>
 
@@ -163,6 +176,27 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
   </div>
 </div>
 
+<div class="sheet pad" id="fx" hidden>
+  <div class="sheet-in">
+    <h2>환율 계산기</h2>
+    <div class="fx-rate" id="fxRate">환율을 불러오는 중…</div>
+    <div class="fx-box">
+      <div class="fx-row"><input id="fxJpy" inputmode="decimal" autocomplete="off" aria-label="엔"><span>엔</span></div>
+      <div class="fx-row"><input id="fxKrw" inputmode="decimal" autocomplete="off" aria-label="원"><span>원</span></div>
+      <div class="fx-quick" id="fxQuick"></div>
+    </div>
+    <div class="field">
+      <label for="fxManual">환율 직접 입력 (100엔당 원, 비우면 자동)</label>
+      <input id="fxManual" inputmode="decimal" placeholder="예: 카드사 적용 환율">
+      <div class="help">자동 환율은 시장 기준 환율입니다. 카드·환전소 적용 환율은 1~2% 정도 다를 수 있습니다.</div>
+    </div>
+    <div class="acts">
+      <button class="act" id="fxRefresh" type="button">환율 새로고침</button>
+      <button class="act primary" id="fxClose" type="button">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet pad" id="settings" hidden>
   <div class="sheet-in">
     <h2>설정</h2>
@@ -194,7 +228,7 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
       <button class="act" id="clearLog" type="button">대화 기록 지우기</button>
     </div>
     <div class="help" id="voiceInfo"></div>
-    <div class="help">버전 2026-11-02d (사진 위 번역)</div>
+    <div class="help">버전 2026-11-02e (환율)</div>
   </div>
 </div>
 
@@ -276,6 +310,9 @@ let model = store.get("gemModel","gemini-3.8-flash");
 let rate = parseFloat(store.get("ttsRate","0.95"));
 let autoSpeak = store.get("autoSpeak","1")==="1";
 let entries = []; try{ entries = JSON.parse(store.get("log","[]")).slice(-50); }catch(e){}
+let fx={rate:parseFloat(store.get("fxRate","0"))||0, at:parseInt(store.get("fxAt","0"))||0, src:store.get("fxSrc","")};
+let fxManual=parseFloat(store.get("fxManual",""))||0;   // 100엔당 원
+const perYen=()=> fxManual ? fxManual/100 : fx.rate;    // 1엔당 원
 const saveLog = ()=>store.set("log", JSON.stringify(entries.slice(-50).map(({thumb,full,...r})=>r)));
 
 const logEl=$("log"), emptyEl=$("empty"), banner=$("banner"), micBtn=$("mic"), levelEl=$("level");
@@ -347,7 +384,7 @@ function photoCard(e){
       const r=el("div","item");
       if (it.ja){ const j=el("div","ja",it.ja); j.lang="ja"; r.append(j); }
       const row=el("div","row"); row.append(el("div","ko",it.ko||""));
-      if (it.price) row.append(el("div","price",it.price));
+      if (it.price){ const pr=el("div","price",it.price); const w=wonOf(it.price); if(w) pr.append(el("span","won","≈ "+w)); row.append(pr); }
       r.append(row);
       if (it.note) r.append(el("div","inote",it.note));
       list.append(r);
@@ -373,6 +410,7 @@ function card(e){
   if (e.pending){ const t=document.createElement("div"); t.className="thinking"; t.textContent=e.pending; c.append(t); return c; }
   if (e.error){ const t=document.createElement("div"); t.className="err"; t.textContent=e.error; c.append(t); return c; }
   const o=document.createElement("div"); o.className="out "+to; o.lang=to; o.textContent=e.out; c.append(o);
+  const ws=wonsIn(e.out+" "+(e.src||"")); if(ws) c.append(el("div","won","💴 "+ws));
   if (e.pron){ const p=document.createElement("div"); p.className="pron"; p.textContent="발음 · "+e.pron; c.append(p); }
   if (e.note){ const n=document.createElement("div"); n.className="note"; n.textContent=e.note; c.append(n); }
   const a=document.createElement("div"); a.className="acts";
@@ -569,6 +607,46 @@ async function translatePhoto(file){
     render(); entries=entries.filter(x=>x!==e);
   }finally{ camBtn.disabled=false; }
 }
+// ---------- 환율 ----------
+function fmtWon(n){ return (n>=1000? Math.round(n/10)*10 : Math.round(n)).toLocaleString("ko-KR")+"원"; }
+function yenAmounts(t){
+  if(!t) return [];
+  const out=[]; const re=/(?:[¥￥]\s*([\d,，]+(?:\.\d+)?))|(?:([\d,，]+(?:\.\d+)?)\s*(?:円|엔|JPY|yen))/gi; let m;
+  while((m=re.exec(t))) { const v=parseFloat((m[1]||m[2]).replace(/[,，]/g,"")); if(v>0) out.push(v); }
+  return out;
+}
+function wonOf(t){ const r=perYen(); const a=yenAmounts(t); if(!r||!a.length) return ""; return fmtWon(a[a.length-1]*r); }
+function wonsIn(t){ const r=perYen(); if(!r) return ""; const a=[...new Set(yenAmounts(t))].slice(0,4); return a.map(v=>v.toLocaleString("ko-KR")+"엔 ≈ "+fmtWon(v*r)).join(" · "); }
+async function fetchFx(force){
+  if(!force && fx.rate && Date.now()-fx.at < 6*3600e3) return;
+  const tries=[
+    async()=>{ const r=await fetch("https://api.frankfurter.app/latest?from=JPY&to=KRW"); const j=await r.json(); return {rate:j.rates.KRW, src:"유럽중앙은행 기준 ("+j.date+")"}; },
+    async()=>{ const r=await fetch("https://open.er-api.com/v6/latest/JPY"); const j=await r.json(); return {rate:j.rates.KRW, src:"ExchangeRate-API ("+(j.time_last_update_utc||"").slice(5,16)+")"}; }
+  ];
+  for(const t of tries){
+    try{ const r=await t(); if(r.rate>0){ fx={rate:r.rate, at:Date.now(), src:r.src}; store.set("fxRate",String(r.rate)); store.set("fxAt",String(fx.at)); store.set("fxSrc",r.src); render(); fxShow(); return; } }catch(_){}
+  }
+  fxShow(true);
+}
+function fxShow(failed){
+  const r=perYen();
+  let t = r ? `100엔 = ${(r*100).toFixed(2)}원` : "환율 정보가 없습니다.";
+  if (fxManual) t+=" · 직접 입력한 환율 사용 중";
+  else if (fx.rate) t+=` · ${fx.src} · ${new Date(fx.at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} 갱신`;
+  if (failed) t+= fx.rate ? " · 최신 환율을 못 받아 저장된 값 사용" : " · 인터넷 연결 후 새로고침을 눌러 주세요";
+  $("fxRate").textContent=t;
+}
+const fxJ=$("fxJpy"), fxK=$("fxKrw");
+const num=v=>parseFloat(String(v).replace(/[^\d.]/g,""))||0;
+fxJ.addEventListener("input",()=>{ const r=perYen(); const v=num(fxJ.value); fxK.value = r&&v ? Math.round(v*r).toLocaleString("ko-KR") : ""; });
+fxK.addEventListener("input",()=>{ const r=perYen(); const v=num(fxK.value); fxJ.value = r&&v ? Math.round(v/r).toLocaleString("ko-KR") : ""; });
+[100,500,1000,3000,5000,10000].forEach(v=>{ const b=el("button",null,v.toLocaleString("ko-KR")+"엔"); b.type="button"; b.onclick=()=>{ fxJ.value=v.toLocaleString("ko-KR"); fxJ.dispatchEvent(new Event("input")); }; $("fxQuick").append(b); });
+$("openFx").onclick=()=>{ $("fxManual").value=fxManual?String(fxManual):""; fxShow(); $("fx").hidden=false; fetchFx(false); };
+$("fxClose").onclick=()=>{ $("fx").hidden=true; };
+$("fxRefresh").onclick=()=>{ $("fxRate").textContent="환율을 불러오는 중…"; fetchFx(true); };
+$("fxManual").addEventListener("input",()=>{ fxManual=parseFloat($("fxManual").value)||0; store.set("fxManual",fxManual?String(fxManual):""); fxShow(); fxJ.dispatchEvent(new Event("input")); render(); });
+fetchFx(false);
+
 // ---------- 사진 위 번역 뷰어 ----------
 function normBox(it){
   let b=it && (it.box || it.box_2d);
@@ -615,6 +693,7 @@ function placeLabels(){
   lensEntry.items.filter(validBox).forEach(it=>{
     let [y0,x0,y1,x1]=it.box.map(n=>Math.max(0,Math.min(1000,+n)));
     const lab=el("div","lab",it.label||it.ko||"");
+    { const w=wonOf(it.price) || wonsIn(it.label||""); if(w){ lab.append(" "); lab.append(el("span","wonlab","≈"+w)); } }
     lab.style.left=(x0/10)+"%"; lab.style.top=(y0/10)+"%";
     lab.style.width=((x1-x0)/10)+"%"; lab.style.height=((y1-y0)/10)+"%";
     lab.onclick=()=>showInfo(it);
@@ -631,6 +710,7 @@ function showInfo(it){
   lensInfo.innerHTML="";
   if(it.ja){ const j=el("div","ja",it.ja); j.lang="ja"; lensInfo.append(j); }
   lensInfo.append(el("div","ko",(it.ko||"")+(it.price?"  "+it.price:"")));
+  { const w=wonOf(it.price) || wonsIn(it.ko||""); if(w) lensInfo.append(el("div","won","≈ "+w)); }
   if(it.note) lensInfo.append(el("div","meta",it.note));
   speak(it.ko,"ko");
 }
