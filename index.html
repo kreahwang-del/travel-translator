@@ -194,6 +194,7 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
       <button class="act" id="clearLog" type="button">대화 기록 지우기</button>
     </div>
     <div class="help" id="voiceInfo"></div>
+    <div class="help">버전 2026-11-02c (사진 위 번역)</div>
   </div>
 </div>
 
@@ -555,10 +556,12 @@ async function translatePhoto(file){
     e.thumb=thumb; render();
     const r=await callGemini([{text:PHOTO_PROMPT},{inline_data:{mime_type:"image/jpeg",data:b64}}], PHOTO_SCHEMA);
     Object.assign(e,{title:r.title||"", summary:r.summary||"", items:Array.isArray(r.items)?r.items:[], tip:r.tip||""});
-    if (e.items.some(validBox)) e.full=full;
+    e.items.forEach(normBox);
+    e.full=full;
     delete e.pending; render(); saveLog(); keepAwake();
     if (autoSpeak && e.summary) speak(e.summary,"ko");
-    if (e.full) openLens(e);
+    if (e.items.length) openLens(e);
+    if (e.items.length && !e.items.some(validBox)) locateBoxes(e, b64);
   }catch(err){
     delete e.pending;
     e.error = (err && err.status) || err instanceof SyntaxError ? errMsg(err) : "사진을 열지 못했습니다. 다른 사진으로 다시 시도해 주세요.";
@@ -566,6 +569,31 @@ async function translatePhoto(file){
   }finally{ camBtn.disabled=false; }
 }
 // ---------- 사진 위 번역 뷰어 ----------
+function normBox(it){
+  let b=it && (it.box || it.box_2d);
+  if (typeof b==="string"){ try{ b=JSON.parse(b); }catch(_){ b=b.split(/[ ,]+/); } }
+  if (!Array.isArray(b) || b.length!==4){ if(it) it.box=null; return; }
+  b=b.map(Number);
+  if (b.every(n=>n>=0 && n<=1)) b=b.map(n=>n*1000);
+  it.box=b;
+}
+const LOC_SCHEMA={type:"OBJECT",properties:{boxes:{type:"ARRAY",items:{type:"OBJECT",properties:{
+  i:{type:"INTEGER"}, box_2d:{type:"ARRAY",items:{type:"INTEGER"}}},required:["i","box_2d"]}}},required:["boxes"]};
+async function locateBoxes(e, b64){
+  setLensMsg("글자 위치를 찾는 중… 잠시만 기다려 주세요.");
+  const list=e.items.map((it,i)=>`${i}: ${it.ja}`).join("\n");
+  try{
+    const r=await callGemini([{text:`Detect where each of these Japanese text snippets appears in the image. For each, return "i" (its index) and "box_2d" as [ymin, xmin, ymax, xmax] normalized to 0-1000, tightly covering that text. Skip snippets you cannot find.\n\n${list}`},
+      {inline_data:{mime_type:"image/jpeg",data:b64}}], LOC_SCHEMA);
+    (r.boxes||[]).forEach(x=>{ const it=e.items[+x.i]; if(it){ it.box=x.box_2d; normBox(it); } });
+  }catch(_){}
+  if (lensEntry===e && !lens.hidden){
+    placeLabels();
+    setLensMsg(e.items.some(validBox) ? "번역된 부분을 누르면 원문과 설명이 나옵니다." : "사진에서 글자 위치를 찾지 못했습니다. '목록 보기'로 번역을 확인해 주세요.");
+  }
+  saveLog();
+}
+function setLensMsg(t){ lensInfo.innerHTML=""; lensInfo.append(el("div","meta",t)); }
 function validBox(it){ const b=it&&it.box; return Array.isArray(b)&&b.length===4&&b.every(n=>Number.isFinite(+n))&&+b[2]>+b[0]&&+b[3]>+b[1]; }
 let lensEntry=null;
 const lens=$("lens"), stage=$("lensStage"), lensImg=$("lensImg"), lensInfo=$("lensInfo");
@@ -573,6 +601,7 @@ function openLens(e){
   lensEntry=e; lens.classList.remove("orig"); $("lensToggle").textContent="원문 보기";
   stage.querySelectorAll(".lab").forEach(n=>n.remove());
   lensInfo.innerHTML='<div class="meta">번역된 부분을 누르면 원문과 설명이 여기에 나옵니다. 두 손가락으로 확대할 수 있습니다.</div>';
+  if (!e.items.some(validBox)) setLensMsg("사진 위 번역 위치가 아직 없습니다. 잠시 기다리거나 '목록 보기'를 눌러 주세요.");
   lens.hidden=false;
   lensImg.onload=placeLabels;
   lensImg.src=e.full;
