@@ -194,7 +194,7 @@ header h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted);
       <button class="act" id="clearLog" type="button">대화 기록 지우기</button>
     </div>
     <div class="help" id="voiceInfo"></div>
-    <div class="help">버전 2026-11-02c (사진 위 번역)</div>
+    <div class="help">버전 2026-11-02d (사진 위 번역)</div>
   </div>
 </div>
 
@@ -525,10 +525,11 @@ Read ALL Japanese (and other foreign) text in the image and explain it in natura
 - "title": what this is, in Korean, a few words (e.g. "라멘집 메뉴판", "역 출구 안내", "약 포장 설명").
 - "summary": 1-2 Korean sentences with the key point a traveler needs (what to do / what it says).
 - "items": each meaningful line or entry in reading order. "ja" = original text as written; "ko" = natural Korean translation (for dishes, add a short explanation of what it is in Korean if not obvious, e.g. "돈코츠 라멘 (돼지뼈 육수)"); "price" = price with currency as shown (e.g. "¥980", "税込1,078円") or ""; "note" = short Korean note only if useful (allergens, spicy, limited time, set includes, warnings), else "".
-  "label" = a SHORT Korean rendering to print over the original text in the photo — about as long as the original, no explanations or parentheses (e.g. "돈코츠 라멘"). Keep numbers/prices as in the original if they are part of that text.
+  "label" = the Korean text to print over the original text in the photo. It must be an actual TRANSLATION of what is written there, never a category name like "제품 설명", "알레르기 성분", "주의사항". Keep it concise but keep all key facts: names, numbers, prices, dates, temperatures, and every allergen/ingredient listed (e.g. "알레르기: 우유·계란·밀·대두·젤라틴", "봉투 밀봉 스티커 – 사용해 주세요"). No explanations in parentheses.
   "box" = the bounding box of that original text in the image as [ymin, xmin, ymax, xmax], integers normalized to 0-1000. One box per text line/block; boxes must tightly cover the original text.
   Keep at most 40 items; for long documents, merge minor lines into one item with one box.
 - "tip": one short Korean sentence of practical advice if helpful (e.g. how to order at the ticket machine, tax included or not), else "".
+Include vertical text and small print too.
 If there is no readable text, describe the image briefly in "summary" and return empty items.`;
 
 async function shrink(file){
@@ -620,10 +621,10 @@ function placeLabels(){
     stage.append(lab);
     // 글자 크기 맞추기: 상자 높이 기준으로 시작해 넘치면 줄임, 너무 작아지면 줄바꿈 허용
     const bw=(x1-x0)/1000*W, bh=(y1-y0)/1000*H;
-    let fs=Math.max(9,Math.min(bh*0.78,40));
+    let fs=Math.max(9,Math.min(bh*0.78,24));
     lab.style.fontSize=fs+"px";
     while(lab.scrollWidth>bw+1 && fs>11){ fs-=1; lab.style.fontSize=fs+"px"; }
-    if(lab.scrollWidth>bw+1){ lab.classList.add("wrap"); while(lab.scrollHeight>bh+1 && fs>8){ fs-=1; lab.style.fontSize=fs+"px"; } }
+    if(lab.scrollWidth>bw+1){ lab.classList.add("wrap"); while(lab.scrollHeight>bh+1 && fs>7){ fs-=1; lab.style.fontSize=fs+"px"; } }
   });
 }
 function showInfo(it){
